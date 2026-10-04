@@ -11,7 +11,7 @@ every calculation up front.
 
 from langchain_core.tools import tool
 
-from workout_repository import WorkoutRepository
+from app_logic.workout_repository import WorkoutRepository
 
 
 class WorkoutTools:

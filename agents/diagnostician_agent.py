@@ -11,8 +11,8 @@ Coach), which is a separate, unrelated class/prompt.
 from langchain_anthropic import ChatAnthropic
 from langgraph.prebuilt import create_react_agent
 
-from workout_repository import WorkoutRepository
-from workout_tools import WorkoutTools
+from app_logic.workout_repository import WorkoutRepository
+from agents.workout_tools import WorkoutTools
 
 DIAGNOSTICIAN_SYSTEM_PROMPT = """
 You are RepIQ's Diagnostician. Use the available tools to pull whatever
