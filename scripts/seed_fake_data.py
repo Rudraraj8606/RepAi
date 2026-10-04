@@ -12,7 +12,7 @@ the Flask pages and your friend can test the agents.
 
 from datetime import date, timedelta
 
-from repiq.app_logic.workout_repository import WorkoutRepository
+from app_logic.workout_repository import WorkoutRepository
 
 DB_PATH = "data/repiq.db"
 
