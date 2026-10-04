@@ -1,0 +1,6 @@
+flask
+langchain-core
+langchain-anthropic
+langgraph
+gspread
+google-auth
