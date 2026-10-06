@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RepIQ - Workout History</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1 { margin-bottom: 0.25rem; }
+    p.sub { color: #666; margin-top: 0; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0 2rem; }
+    th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid #eee; }
+    th { background: #f6f6f6; }
+    a.btn { color: #1d6fa5; text-decoration: none; }
+    a.btn:hover { text-decoration: underline; }
+    .miss { color: #b00; }
+  </style>
+</head>
+<body>
+  <h1>RepIQ</h1>
+  <p class="sub">Your workout history and quick trends.</p>
+
+  <h2>Summary</h2>
+  <table>
+    <tr><th>Exercise</th><th>Weekly volume</th><th>Est. 1RM</th><th>Missed reps</th><th></th></tr>
+    {% for row in summary %}
+    <tr>
+      <td>{{ row.exercise }}</td>
+      <td>{{ row.weekly_volume }} lbs</td>
+      <td>{{ row.one_rep_max }} lbs</td>
+      <td>{% if row.rep_deficit and row.rep_deficit > 0 %}<span class="miss">{{ row.rep_deficit }}</span>{% else %}0{% endif %}</td>
+      <td><a class="btn" href="/coach/{{ row.exercise }}">Get coaching &rarr;</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <h2>All logged sets</h2>
+  <table>
+    <tr><th>Date</th><th>Exercise</th><th>Weight</th><th>Reps</th><th>Planned</th><th>Notes</th></tr>
+    {% for s in sets %}
+    <tr>
+      <td>{{ s.logged_on }}</td>
+      <td>{{ s.exercise }}</td>
+      <td>{{ s.weight }} lbs</td>
+      <td>{{ s.reps }}</td>
+      <td>{{ s.planned_reps }}</td>
+      <td>{{ s.notes }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</body>
+</html>
