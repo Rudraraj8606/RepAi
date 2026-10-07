@@ -13,6 +13,9 @@ from langgraph.prebuilt import create_react_agent
 
 from app_logic.workout_repository import WorkoutRepository
 from agents.workout_tools import WorkoutTools
+from dotenv import load_dotenv
+_
+load_dotenv()
 
 DIAGNOSTICIAN_SYSTEM_PROMPT = """
 You are RepIQ's Diagnostician. Use the available tools to pull whatever
@@ -26,7 +29,7 @@ prescribe a workout -- that is a separate agent's job. Just diagnose.
 
 def build_diagnostician_agent(repository: WorkoutRepository):
     tools = WorkoutTools(repository).get_tools()
-    llm = ChatAnthropic(model="claude-sonnet-4-6")
+    llm = ChatAnthropic(model="claude-sonnet-5")
     return create_react_agent(llm, tools, prompt=DIAGNOSTICIAN_SYSTEM_PROMPT)
 
 
