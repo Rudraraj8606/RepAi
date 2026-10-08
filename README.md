@@ -140,14 +140,14 @@ python -m scripts.seed_fake_data
 python -m web.app
 ```
 
-Open **http://127.0.0.1:5000**.
+Open the URL printed in the terminal (e.g. `RepIQ running at http://127.0.0.1:5001`). The app starts on port 5000, or the next free port if 5000 is taken. On macOS, AirPlay Receiver uses 5000. To choose a different starting port, run `PORT=8000 python -m web.app`.
 
 | Page | What you see |
 |---|---|
 | `/` | **Log a set** form, a **Summary** table (weekly volume, est. 1RM, missed reps per exercise) and **All logged sets** |
 | `/coach/<exercise>` | Asks how your last session felt, then runs both agents and shows the **Diagnosis** and **Recommendation** |
 
-The coaching page only calls the AI once you submit a note, so just opening it doesn't spend API credits.
+The coaching page only calls the AI once you submit a note, so just opening it doesn't spend API credits. While the agents run, which can take up to a minute, the page shows a spinner.
 
 ### Running the agents from the terminal
 
@@ -175,7 +175,7 @@ python -m scripts.seed_fake_data
 
 Inserts 10 sets across Bench Press, Squat, Deadlift and Overhead Press, then prints every metric. The Bench Press data is built to tell a story: steady progress from 135 → 145 lbs, then a drop to 135 × 8 (planned 10) with the note *"shoulder felt off"*.
 
-> Running it twice inserts the sets twice. Delete `data/repiq.db` to start fresh.
+> Safe to re-run: it replaces the previous demo sets (with dates moved up to today) instead of adding a second copy. Sets you logged in the web form are kept.
 
 ### 3. Google Sheets
 
@@ -204,6 +204,10 @@ Inserts 10 sets across Bench Press, Squat, Deadlift and Overhead Press, then pri
 python -m scripts.import_from_sheets
 ```
 
+Safe to re-run: each import replaces the previous import's sets, so the database mirrors the Sheet, including edited and deleted rows. If any row is invalid (e.g. a non-numeric weight), nothing is changed. Web-form and demo sets are kept.
+
+> Every set records its **source** (`manual`, `seed` or `sheets`). That's how re-runs replace only their own rows. Identical sets logged by hand, such as 3 × 135 lbs × 10 on one day, are never merged.
+
 ---
 
 ## Demo walkthrough
@@ -211,7 +215,7 @@ python -m scripts.import_from_sheets
 A 3-minute demo that shows the whole system:
 
 1. **Start fresh:** `rm -f data/repiq.db && python -m scripts.seed_fake_data`
-2. **Launch:** `python -m web.app` and open http://127.0.0.1:5000
+2. **Launch:** `python -m web.app` and open the URL it prints
 3. **Show the metrics:** point out Bench Press in the Summary — estimated 1RM and **2 missed reps** in red.
 4. **Log a set live:** `Bench Press · 130 lbs · 6 reps · planned 10 · "shoulder pain again"` → it appears instantly and the summary updates.
 5. **Get coaching:** click **Get coaching →** on Bench Press, enter *"shoulder felt off again, pressing felt weak"*, submit.
@@ -236,13 +240,14 @@ pytest -k rep_deficit                 # tests whose name matches
 
 | File | Tests | What it covers |
 |---|---|---|
-| `tests/test_repository.py` | 20 | The core math. Weekly volume (including the exact 7-day cutoff and ignoring other exercises), Epley 1RM and its rounding, progression curve window and order, rep deficit (missed, beaten, no plan, no data), newest-first ordering, distinct exercise list, empty database, and automatic creation of the `data/` folder. |
+| `tests/test_repository.py` | 26 | The core math. Weekly volume (including the exact 7-day cutoff and ignoring other exercises), Epley 1RM and its rounding, progression curve window and order, rep deficit (missed, beaten, no plan, no data), newest-first ordering, distinct exercise list, empty database, automatic creation of the `data/` folder, and source tracking: re-runs replace only their own rows, identical manual sets are kept, a failed replace rolls back, and older databases get the `source` column added. |
 | `tests/test_workout_tools.py` | 11 | The exact text Agent 1 receives from each of the 5 tools, plus the "no data" message each tool returns instead of crashing. |
 | `tests/test_pipeline.py` | 1 | Agent 1's output is passed to Agent 2, and the pipeline returns `{"diagnosis", "plan"}`. Both agents are faked. |
-| `tests/test_web_app.py` | 12 | History page (empty and with data), the log-a-set form (saves, strips whitespace, redirects; planned reps optional; rejects bad weight, bad reps, bad date, blank exercise, missing fields), and the coach page (doesn't run the AI without a note, shows diagnosis + plan with one, shows a friendly error if the pipeline fails). |
-| `tests/test_import_from_sheets.py` | 3 | Converting Sheet rows to database rows the way `gspread` returns them (ints, strings, blanks), skipping blank rows, and a missing `notes` column. |
+| `tests/test_web_app.py` | 13 | History page (empty and with data), the log-a-set form (saves, strips whitespace, redirects; planned reps optional; rejects bad weight, bad reps, bad date, blank exercise, missing fields), and the coach page (doesn't run the AI without a note, shows diagnosis + plan with one, shows a friendly error if the pipeline fails, includes the loading spinner), and free-port selection when a port is taken. |
+| `tests/test_import_from_sheets.py` | 7 | Converting Sheet rows to database rows the way `gspread` returns them (ints, strings, blanks), skipping blank rows, a missing `notes` column, and re-importing: no duplicates, edits and deletions mirrored, web-form sets kept, and a bad row aborts before anything is deleted. |
+| `tests/test_seed_fake_data.py` | 3 | The demo seed loads 10 sets, running it twice still leaves 10, and sets logged by hand survive a re-seed. |
 
-**Total: 47 tests.**
+**Total: 61 tests.**
 
 ### What the tests don't cover
 
@@ -300,7 +305,6 @@ Keep commits small and focused: one logical change per commit, with a message th
 ## Known issues & next steps
 
 - **Sheets key location:** `import_from_sheets.py` reads `credentials.json` from the project root, but `.gitignore` only ignores the `credentials/` folder, so a root key file could be committed by accident. Planned fix: read from `credentials/credentials.json`.
-- **Re-importing duplicates data:** running the Sheets import (or the seed script) twice inserts every row again, which inflates weekly volume. Planned fix: skip rows that already exist.
 - **LangGraph deprecation:** `create_react_agent` is deprecated and should be migrated to `langchain.agents.create_agent` before LangGraph v2.0.
 - **Not yet done:** user accounts, editing/deleting logged sets, and charts of the progression trend.
 
