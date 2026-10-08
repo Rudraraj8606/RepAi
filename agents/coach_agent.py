@@ -35,7 +35,7 @@ def coach(diagnosis: str) -> str:
         ("user", f"Diagnosis: {diagnosis}"),
     ]
     result = llm.invoke(messages)
-    return result.content
+    return result.text
 
 
 if __name__ == "__main__":
