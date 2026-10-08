@@ -14,11 +14,33 @@
     a.btn { color: #1d6fa5; text-decoration: none; }
     a.btn:hover { text-decoration: underline; }
     .miss { color: #b00; }
+    form.log { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.6rem; align-items: end;
+               border: 1px solid #eee; border-radius: 10px; padding: 1rem; margin: 1rem 0 2rem; }
+    form.log label { display: flex; flex-direction: column; font-size: 0.85rem; color: #555; gap: 0.25rem; }
+    form.log input { font: inherit; padding: 0.4rem; border: 1px solid #ccc; border-radius: 6px; }
+    form.log .wide { grid-column: span 2; }
+    form.log button { font: inherit; padding: 0.5rem 1rem; border: 0; border-radius: 6px; background: #1d6fa5; color: #fff; cursor: pointer; }
+    .error { background: #fff0f0; border: 1px solid #f0c0c0; border-radius: 10px; padding: 0.6rem 1rem; color: #900; }
   </style>
 </head>
 <body>
   <h1>RepIQ</h1>
   <p class="sub">Your workout history and quick trends.</p>
+
+  <h2>Log a set</h2>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form class="log" method="post" action="/add-set">
+    <label>Date <input type="date" name="logged_on" value="{{ today }}" required></label>
+    <label class="wide">Exercise <input name="exercise" list="exercises" placeholder="e.g. Bench Press" required></label>
+    <label>Weight (lbs) <input type="number" name="weight" step="0.5" min="0" required></label>
+    <label>Reps <input type="number" name="reps" min="0" required></label>
+    <label>Planned reps <input type="number" name="planned_reps" min="0"></label>
+    <label class="wide">Notes <input name="notes" placeholder="e.g. shoulder felt off"></label>
+    <button type="submit">Add set</button>
+  </form>
+  <datalist id="exercises">
+    {% for row in summary %}<option value="{{ row.exercise }}">{% endfor %}
+  </datalist>
 
   <h2>Summary</h2>
   <table>

@@ -2,7 +2,8 @@
 app.py  --  Flask web app.  (YOUR FILE / A)
 
 Two pages:
-  "/"            -> workout history + a quick metric summary per exercise
+  "/"            -> workout history + a quick metric summary per exercise,
+                    plus a form to log a new set (POSTs to "/add-set")
   "/coach/<ex>"  -> asks for a note on how the session felt, then runs the
                     AI pipeline (Agent 1 -> Agent 2) and shows the diagnosis + plan
 
@@ -11,7 +12,9 @@ Run (from the RepAi/ folder):
 Then open http://127.0.0.1:5000 in your browser.
 """
 
-from flask import Flask, render_template, request
+from datetime import date
+
+from flask import Flask, redirect, render_template, request, url_for
 
 from app_logic.workout_repository import WorkoutRepository
 
@@ -23,6 +26,10 @@ repo = WorkoutRepository(DB_PATH)
 
 @app.route("/")
 def history():
+    return render_history()
+
+
+def render_history(error=None):
     sets = repo.get_all_sets()
     # Build a small summary row for each exercise using the deterministic math.
     summary = []
@@ -35,7 +42,31 @@ def history():
                 "rep_deficit": repo.get_rep_deficit(exercise),
             }
         )
-    return render_template("history.html", sets=sets, summary=summary)
+    return render_template(
+        "history.html", sets=sets, summary=summary, error=error, today=date.today().isoformat()
+    )
+
+
+@app.route("/add-set", methods=["POST"])
+def add_set():
+    form = request.form
+    try:
+        exercise = form["exercise"].strip()
+        if not exercise:
+            raise ValueError("Exercise name is required.")
+        planned = form.get("planned_reps", "").strip()
+        repo.add_set(
+            exercise=exercise,
+            weight=float(form["weight"]),
+            reps=int(form["reps"]),
+            logged_on=date.fromisoformat(form["logged_on"]),
+            planned_reps=int(planned) if planned else None,
+            notes=form.get("notes", "").strip(),
+        )
+    except (KeyError, ValueError) as e:
+        return render_history(error=f"Couldn't save that set: {e}"), 400
+    # Redirect so refreshing the page doesn't submit the same set twice.
+    return redirect(url_for("history"))
 
 
 @app.route("/coach/<exercise>")
