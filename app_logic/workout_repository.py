@@ -10,6 +10,7 @@ Agent 2 never touch the database directly -- they only see the results
 that this class produces, exposed to them through WorkoutTools.
 """
 
+import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -29,8 +30,9 @@ class SetEntry:
 class WorkoutRepository:
     """Owns the SQLite connection and all deterministic training-metric math."""
 
-    def __init__(self, db_path: str = "repiq.db"):
+    def __init__(self, db_path: str = "data/repiq.db"):
         self.db_path = db_path
+        os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
         self._init_schema()
 
     def _connect(self) -> sqlite3.Connection:
@@ -97,6 +99,33 @@ class WorkoutRepository:
             )
             for r in rows
         ]
+
+    def get_all_sets(self) -> list[SetEntry]:
+        """Every logged set, newest first (used by the history page)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT exercise, weight, reps, planned_reps, notes, logged_on
+                FROM sets ORDER BY logged_on DESC, id DESC
+                """
+            ).fetchall()
+        return [
+            SetEntry(
+                exercise=r["exercise"],
+                weight=r["weight"],
+                reps=r["reps"],
+                planned_reps=r["planned_reps"],
+                notes=r["notes"],
+                logged_on=date.fromisoformat(r["logged_on"]),
+            )
+            for r in rows
+        ]
+
+    def get_all_exercises(self) -> list[str]:
+        """Distinct exercise names that have at least one logged set."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT DISTINCT exercise FROM sets ORDER BY exercise").fetchall()
+        return [r["exercise"] for r in rows]
 
     # ---- Deterministic calculations (the "custom application logic") ----
 
