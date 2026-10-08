@@ -3,18 +3,15 @@ app.py  --  Flask web app.  (YOUR FILE / A)
 
 Two pages:
   "/"            -> workout history + a quick metric summary per exercise
-  "/coach/<ex>"  -> runs the AI pipeline and shows the diagnosis + plan
+  "/coach/<ex>"  -> asks for a note on how the session felt, then runs the
+                    AI pipeline (Agent 1 -> Agent 2) and shows the diagnosis + plan
 
-Run (from the repiq_project/ folder):
-    python -m repiq.web.app
+Run (from the RepAi/ folder):
+    python -m web.app
 Then open http://127.0.0.1:5000 in your browser.
-
-Note: the coaching page calls your friend's pipeline (Agent 1 -> Agent 2).
-Until that's finished, the page shows a friendly "not ready yet" message
-instead of crashing -- so you can build and test this site right now.
 """
 
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 
 from app_logic.workout_repository import WorkoutRepository
 
@@ -44,17 +41,18 @@ def history():
 @app.route("/coach/<exercise>")
 def coach(exercise):
     diagnosis, plan, error = None, None, None
-    try:
-        # Your friend builds this pipeline (Agent 1 -> Agent 2).
-        from agents.pipeline import run_pipeline
-        diagnosis, plan = run_pipeline(repo, exercise)
-    except (ImportError, NotImplementedError):
-        error = "The AI coaching pipeline isn't finished yet. Check back once Agent 2 is built."
-    except Exception as e:
-        error = f"Something went wrong running the coach: {e}"
+    # Only run the pipeline once the user has submitted a note -- each run makes LLM calls.
+    note = request.args.get("note")
+    if note is not None:
+        try:
+            from agents.pipeline import run_pipeline
+            result = run_pipeline(repo, exercise, note)
+            diagnosis, plan = result["diagnosis"], result["plan"]
+        except Exception as e:
+            error = f"Something went wrong running the coach: {e}"
 
     return render_template(
-        "coach.html", exercise=exercise, diagnosis=diagnosis, plan=plan, error=error
+        "coach.html", exercise=exercise, note=note, diagnosis=diagnosis, plan=plan, error=error
     )
 
 

@@ -12,15 +12,24 @@
     .note { background: #fff8e1; border-color: #f0e0a0; }
     .diag { background: #eef4fb; }
     .plan { background: #eefaf0; }
+    .diag p, .plan p { white-space: pre-wrap; }
+    form textarea { width: 100%; box-sizing: border-box; font: inherit; padding: .5rem; }
+    form button { margin-top: .5rem; padding: .5rem 1rem; }
   </style>
 </head>
 <body>
   <p><a class="back" href="/">&larr; Back to history</a></p>
   <h1>Coaching: {{ exercise }}</h1>
 
+  <form class="card" method="get" action="/coach/{{ exercise }}">
+    <label for="note">How did your last {{ exercise }} session feel?</label>
+    <textarea id="note" name="note" rows="3" placeholder="e.g. shoulder felt off today">{{ note or "" }}</textarea>
+    <button type="submit">Get coaching</button>
+  </form>
+
   {% if error %}
     <div class="card note"><p>{{ error }}</p></div>
-  {% else %}
+  {% elif note is not none %}
     <div class="card diag">
       <h2>Diagnosis (Agent 1)</h2>
       <p>{{ diagnosis }}</p>
