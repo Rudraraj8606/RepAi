@@ -51,12 +51,20 @@ class WorkoutRepository:
                     reps INTEGER NOT NULL,
                     planned_reps INTEGER,
                     notes TEXT DEFAULT '',
-                    logged_on TEXT NOT NULL
+                    logged_on TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'manual'
                 )
                 """
             )
+            # Databases created before the `source` column existed get it added here.
+            columns = [row["name"] for row in conn.execute("PRAGMA table_info(sets)")]
+            if "source" not in columns:
+                conn.execute("ALTER TABLE sets ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
 
-    # ---- Ingestion (fed by the Google Sheets import script) ----
+    # ---- Ingestion ----
+    # `source` records where a set came from: "manual" (web form), "seed"
+    # (demo data) or "sheets" (Google Sheets import). Scripts re-run with
+    # replace_sets_from_source(), so running them twice never duplicates data.
 
     def add_set(
         self,
@@ -66,15 +74,39 @@ class WorkoutRepository:
         logged_on: date,
         planned_reps: Optional[int] = None,
         notes: str = "",
+        source: str = "manual",
     ) -> None:
         with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO sets (exercise, weight, reps, planned_reps, notes, logged_on)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (exercise, weight, reps, planned_reps, notes, logged_on.isoformat()),
-            )
+            self._insert_set(conn, exercise, weight, reps, logged_on, planned_reps, notes, source)
+
+    def replace_sets_from_source(self, source: str, sets: list[dict]) -> int:
+        """Delete every set from `source`, then insert `sets` (dicts of add_set
+        arguments). Runs as one transaction, so a failure leaves the old rows in place.
+        Returns how many sets were inserted."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM sets WHERE source = ?", (source,))
+            for s in sets:
+                self._insert_set(
+                    conn,
+                    s["exercise"],
+                    s["weight"],
+                    s["reps"],
+                    s["logged_on"],
+                    s.get("planned_reps"),
+                    s.get("notes", ""),
+                    source,
+                )
+        return len(sets)
+
+    @staticmethod
+    def _insert_set(conn, exercise, weight, reps, logged_on, planned_reps, notes, source) -> None:
+        conn.execute(
+            """
+            INSERT INTO sets (exercise, weight, reps, planned_reps, notes, logged_on, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (exercise, weight, reps, planned_reps, notes, logged_on.isoformat(), source),
+        )
 
     # ---- Reads used internally by the calculations below ----
 

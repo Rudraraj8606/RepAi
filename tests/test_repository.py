@@ -164,3 +164,66 @@ def test_rep_deficit_is_none_without_planned_reps(repo):
 
 def test_rep_deficit_is_none_with_no_data(repo):
     assert repo.get_rep_deficit("Bench Press") is None
+
+
+# ---- Re-runnable imports (source tracking) ----
+
+def test_add_set_defaults_to_manual_source(repo):
+    repo.add_set("Bench Press", 135, 10, days_ago(1))
+    repo.replace_sets_from_source("seed", [])
+
+    assert len(repo.get_all_sets()) == 1
+
+
+def test_replace_sets_from_source_does_not_duplicate(repo):
+    sets = [{"exercise": "Squat", "weight": 225, "reps": 5, "logged_on": days_ago(1)}]
+
+    repo.replace_sets_from_source("seed", sets)
+    repo.replace_sets_from_source("seed", sets)
+
+    assert len(repo.get_all_sets()) == 1
+
+
+def test_replace_sets_from_source_keeps_other_sources(repo):
+    repo.add_set("Bench Press", 135, 10, days_ago(1))
+    repo.replace_sets_from_source("sheets", [{"exercise": "Squat", "weight": 225, "reps": 5, "logged_on": days_ago(1)}])
+
+    repo.replace_sets_from_source("seed", [{"exercise": "Deadlift", "weight": 315, "reps": 3, "logged_on": days_ago(1)}])
+
+    assert repo.get_all_exercises() == ["Bench Press", "Deadlift", "Squat"]
+
+
+def test_identical_manual_sets_are_both_kept(repo):
+    # Three sets of 135 x 10 on one day is a normal workout, not a duplicate.
+    repo.add_set("Bench Press", 135, 10, days_ago(1))
+    repo.add_set("Bench Press", 135, 10, days_ago(1))
+
+    assert len(repo.get_all_sets()) == 2
+
+
+def test_replace_rolls_back_if_a_set_is_invalid(repo):
+    good = {"exercise": "Squat", "weight": 225, "reps": 5, "logged_on": days_ago(1)}
+    repo.replace_sets_from_source("sheets", [good])
+
+    with pytest.raises(KeyError):
+        repo.replace_sets_from_source("sheets", [good, {"exercise": "Squat"}])
+
+    assert len(repo.get_all_sets()) == 1  # the earlier import is still there
+
+
+def test_adds_source_column_to_old_database(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "old.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """CREATE TABLE sets (id INTEGER PRIMARY KEY AUTOINCREMENT, exercise TEXT NOT NULL,
+               weight REAL NOT NULL, reps INTEGER NOT NULL, planned_reps INTEGER,
+               notes TEXT DEFAULT '', logged_on TEXT NOT NULL)"""
+        )
+        conn.execute("INSERT INTO sets (exercise, weight, reps, logged_on) VALUES ('Squat', 225, 5, '2026-10-01')")
+
+    repo = WorkoutRepository(str(db_path))
+    repo.replace_sets_from_source("seed", [])
+
+    assert [s.exercise for s in repo.get_all_sets()] == ["Squat"]  # old row kept, treated as manual

@@ -1,9 +1,12 @@
 """
 seed_fake_data.py  --  insert ~10 fake workouts, then print the calculations.
 
-Run this FIRST (from the repiq_project/ folder):
+Run this FIRST (from the RepAi/ folder):
 
     python -m scripts.seed_fake_data
+
+Safe to run again: it replaces the previous demo sets (with dates moved up to
+today) instead of adding a second copy. Sets you logged yourself are kept.
 
 If you see real numbers printed at the end, the whole app-logic layer works.
 This is what unblocks the rest of the project: once data exists, you can build
@@ -33,16 +36,21 @@ def seed(repo: WorkoutRepository) -> None:
         ("Overhead Press", 95, 6, 8, "shoulders tired", today - timedelta(days=4)),
     ]
 
-    for exercise, weight, reps, planned, notes, logged_on in fake_sets:
-        repo.add_set(
-            exercise=exercise,
-            weight=weight,
-            reps=reps,
-            planned_reps=planned,
-            notes=notes,
-            logged_on=logged_on,
-        )
-    print(f"Inserted {len(fake_sets)} fake sets.\n")
+    count = repo.replace_sets_from_source(
+        "seed",
+        [
+            {
+                "exercise": exercise,
+                "weight": weight,
+                "reps": reps,
+                "planned_reps": planned,
+                "notes": notes,
+                "logged_on": logged_on,
+            }
+            for exercise, weight, reps, planned, notes, logged_on in fake_sets
+        ],
+    )
+    print(f"Loaded {count} fake sets (replacing any from a previous run).\n")
 
 
 def print_metrics(repo: WorkoutRepository) -> None:

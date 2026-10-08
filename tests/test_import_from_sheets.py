@@ -50,3 +50,42 @@ def test_missing_notes_column_is_fine(repo):
     import_rows(repo, rows)
 
     assert repo.get_all_sets()[0].notes == ""
+
+
+def test_reimport_replaces_instead_of_duplicating(repo):
+    rows = [{"date": "2026-09-20", "exercise": "Bench Press", "weight": 145, "reps": 9}]
+
+    import_rows(repo, rows)
+    import_rows(repo, rows)
+
+    assert len(repo.get_all_sets()) == 1
+
+
+def test_reimport_reflects_edits_and_deleted_rows(repo):
+    import_rows(repo, [
+        {"date": "2026-09-20", "exercise": "Bench Press", "weight": 145, "reps": 9},
+        {"date": "2026-09-21", "exercise": "Squat", "weight": 185, "reps": 5},
+    ])
+
+    import_rows(repo, [{"date": "2026-09-20", "exercise": "Bench Press", "weight": 150, "reps": 9}])
+
+    [only] = repo.get_all_sets()
+    assert (only.exercise, only.weight) == ("Bench Press", 150.0)
+
+
+def test_reimport_keeps_sets_logged_in_the_web_form(repo):
+    repo.add_set("Deadlift", 315, 3, date(2026, 9, 22))
+
+    import_rows(repo, [{"date": "2026-09-20", "exercise": "Bench Press", "weight": 145, "reps": 9}])
+    import_rows(repo, [{"date": "2026-09-20", "exercise": "Bench Press", "weight": 145, "reps": 9}])
+
+    assert repo.get_all_exercises() == ["Bench Press", "Deadlift"]
+
+
+def test_bad_row_aborts_before_deleting_previous_import(repo):
+    import_rows(repo, [{"date": "2026-09-20", "exercise": "Bench Press", "weight": 145, "reps": 9}])
+
+    with pytest.raises(ValueError):
+        import_rows(repo, [{"date": "2026-09-21", "exercise": "Squat", "weight": "heavy", "reps": 5}])
+
+    assert repo.get_all_exercises() == ["Bench Press"]
