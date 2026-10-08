@@ -18,8 +18,12 @@ Setup (one time):
      xxxx@yyyy.iam.gserviceaccount.com) so it's allowed to read the Sheet.
   4. Put your Sheet's name in SHEET_NAME below.
 
-Run (from the repiq_project/ folder):
+Run (from the RepAi/ folder):
     python -m scripts.import_from_sheets
+
+Safe to run again: each import replaces the sets from the previous import, so
+the database always mirrors the Sheet (edits and deleted rows included).
+Sets logged through the web form are kept.
 """
 
 from datetime import date
@@ -45,24 +49,26 @@ def read_rows_from_sheet() -> list[dict]:
 
 
 def import_rows(repo: WorkoutRepository, rows: list[dict]) -> int:
-    """Save each Sheet row into the database. Returns how many were imported."""
-    imported = 0
+    """Replace previously imported Sheet sets with `rows`. Returns how many were imported."""
+    # Parse every row first, so a bad row stops the import before anything is deleted.
+    sets = []
     for row in rows:
         # Skip blank / malformed rows instead of crashing the whole import.
         if not row.get("exercise") or not row.get("date"):
             continue
 
         planned = row.get("planned_reps")
-        repo.add_set(
-            exercise=str(row["exercise"]).strip(),
-            weight=float(row["weight"]),
-            reps=int(row["reps"]),
-            logged_on=date.fromisoformat(str(row["date"]).strip()),
-            planned_reps=int(planned) if planned not in (None, "") else None,
-            notes=str(row.get("notes", "")).strip(),
+        sets.append(
+            {
+                "exercise": str(row["exercise"]).strip(),
+                "weight": float(row["weight"]),
+                "reps": int(row["reps"]),
+                "logged_on": date.fromisoformat(str(row["date"]).strip()),
+                "planned_reps": int(planned) if planned not in (None, "") else None,
+                "notes": str(row.get("notes", "")).strip(),
+            }
         )
-        imported += 1
-    return imported
+    return repo.replace_sets_from_source("sheets", sets)
 
 
 if __name__ == "__main__":
