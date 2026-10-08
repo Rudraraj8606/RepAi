@@ -15,17 +15,27 @@
     .diag p, .plan p { white-space: pre-wrap; }
     form textarea { width: 100%; box-sizing: border-box; font: inherit; padding: .5rem; }
     form button { margin-top: .5rem; padding: .5rem 1rem; }
+    form button:disabled { opacity: .6; cursor: wait; }
+    .loading { display: none; align-items: center; gap: .6rem; color: #555; }
+    .loading.show { display: flex; }
+    .spinner { width: 1rem; height: 1rem; border: 2px solid #cfe0ef; border-top-color: #1d6fa5; border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <p><a class="back" href="/">&larr; Back to history</a></p>
   <h1>Coaching: {{ exercise }}</h1>
 
-  <form class="card" method="get" action="/coach/{{ exercise }}">
+  <form class="card" id="coach-form" method="get" action="/coach/{{ exercise }}">
     <label for="note">How did your last {{ exercise }} session feel?</label>
     <textarea id="note" name="note" rows="3" placeholder="e.g. shoulder felt off today">{{ note or "" }}</textarea>
     <button type="submit">Get coaching</button>
   </form>
+
+  <div class="card loading" id="loading" role="status" aria-live="polite">
+    <div class="spinner"></div>
+    <span>Coaching&hellip; Agent 1 is analyzing your training data, then Agent 2 builds your plan. This can take up to a minute.</span>
+  </div>
 
   {% if error %}
     <div class="card note"><p>{{ error }}</p></div>
@@ -39,5 +49,13 @@
       <p>{{ plan }}</p>
     </div>
   {% endif %}
+  <script>
+    // The pipeline takes a while; show progress and hide the old result so the page doesn't look frozen.
+    document.getElementById("coach-form").addEventListener("submit", function () {
+      this.querySelector("button").disabled = true;
+      document.getElementById("loading").classList.add("show");
+      document.querySelectorAll(".diag, .plan, .note").forEach(function (el) { el.style.display = "none"; });
+    });
+  </script>
 </body>
 </html>
