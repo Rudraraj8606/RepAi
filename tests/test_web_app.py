@@ -123,6 +123,7 @@ def test_coach_page_without_note_does_not_run_pipeline(client, fake_pipeline):
 
     assert fake_pipeline == []
     assert "How did your last Bench Press session feel?" in body
+    assert 'id="loading"' in body
     assert "FAKE DIAGNOSIS" not in body
 
 
@@ -148,3 +149,19 @@ def test_coach_page_shows_error_if_pipeline_fails(client, monkeypatch):
 
     assert resp.status_code == 200
     assert "Something went wrong running the coach: API key missing" in resp.get_data(as_text=True)
+
+
+# ---- Port selection ----
+
+def test_find_free_port_skips_a_port_in_use():
+    import socket
+
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        taken = busy.getsockname()[1]
+
+        port = web_app.find_free_port(taken)
+
+    assert port != taken
+    assert taken < port < taken + 50

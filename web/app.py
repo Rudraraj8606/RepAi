@@ -9,9 +9,13 @@ Two pages:
 
 Run (from the RepAi/ folder):
     python -m web.app
-Then open http://127.0.0.1:5000 in your browser.
+It starts on port 5000, or the next free port if 5000 is taken (on macOS,
+AirPlay Receiver uses 5000). The terminal prints the URL to open.
+Set PORT=xxxx to choose a starting port yourself.
 """
 
+import os
+import socket
 from datetime import date
 
 from flask import Flask, redirect, render_template, request, url_for
@@ -87,5 +91,22 @@ def coach(exercise):
     )
 
 
+def find_free_port(start: int, attempts: int = 50) -> int:
+    """Return the first port from `start` upward that nothing is listening on."""
+    for port in range(start, start + attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise RuntimeError(f"No free port found between {start} and {start + attempts - 1}.")
+
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Flask's debug reloader re-runs this file in a child process, so pick the
+    # port once and hand it down through the environment.
+    if "REPAI_PORT" not in os.environ:
+        os.environ["REPAI_PORT"] = str(find_free_port(int(os.environ.get("PORT", 5000))))
+        print(f"\n  RepIQ running at  http://127.0.0.1:{os.environ['REPAI_PORT']}\n")
+    app.run(debug=True, port=int(os.environ["REPAI_PORT"]))
