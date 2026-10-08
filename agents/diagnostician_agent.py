@@ -14,7 +14,7 @@ from langgraph.prebuilt import create_react_agent
 from app_logic.workout_repository import WorkoutRepository
 from agents.workout_tools import WorkoutTools
 from dotenv import load_dotenv
-_
+
 load_dotenv()
 
 DIAGNOSTICIAN_SYSTEM_PROMPT = """
