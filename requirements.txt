@@ -5,3 +5,4 @@ langgraph
 gspread
 google-auth
 python-dotenv==1.2.4
+pytest
