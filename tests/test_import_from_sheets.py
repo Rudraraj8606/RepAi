@@ -4,13 +4,7 @@ from datetime import date
 
 import pytest
 
-from app_logic.workout_repository import WorkoutRepository
 from scripts.import_from_sheets import import_rows
-
-
-@pytest.fixture
-def repo(tmp_path):
-    return WorkoutRepository(str(tmp_path / "test.db"))
 
 
 def test_imports_rows_like_get_all_records_returns(repo):

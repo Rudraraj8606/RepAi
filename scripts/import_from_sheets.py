@@ -1,5 +1,5 @@
 """
-import_from_sheets.py  --  Google Sheet -> SQLite loader.  (YOUR FILE / A)
+import_from_sheets.py  --  Google Sheet -> PostgreSQL loader.  (YOUR FILE / A)
 
 What it does:
   Reads each row of a user's workout Google Sheet and saves it into the
@@ -33,7 +33,6 @@ from google.oauth2.service_account import Credentials
 
 from app_logic.workout_repository import WorkoutRepository
 
-DB_PATH = "data/repiq.db"
 CREDENTIALS_FILE = "credentials.json"
 SHEET_NAME = "RepIQ Workout Log"   # <-- change to your Sheet's name
 
@@ -72,7 +71,7 @@ def import_rows(repo: WorkoutRepository, rows: list[dict]) -> int:
 
 
 if __name__ == "__main__":
-    repo = WorkoutRepository(DB_PATH)
+    repo = WorkoutRepository()
     rows = read_rows_from_sheet()
     count = import_rows(repo, rows)
-    print(f"Imported {count} sets from '{SHEET_NAME}' into {DB_PATH}.")
+    print(f"Imported {count} sets from '{SHEET_NAME}' into the database.")

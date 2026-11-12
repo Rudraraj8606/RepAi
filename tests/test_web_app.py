@@ -7,12 +7,11 @@ from datetime import date
 import pytest
 
 import web.app as web_app
-from app_logic.workout_repository import WorkoutRepository
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch):
-    test_repo = WorkoutRepository(str(tmp_path / "test.db"))
+def repo(make_repo, monkeypatch):
+    test_repo = make_repo()
     monkeypatch.setattr(web_app, "repo", test_repo)
     return test_repo
 

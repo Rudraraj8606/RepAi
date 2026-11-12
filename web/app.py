@@ -22,10 +22,18 @@ from flask import Flask, redirect, render_template, request, url_for
 
 from app_logic.workout_repository import WorkoutRepository
 
-DB_PATH = "data/repiq.db"
-
 app = Flask(__name__)
-repo = WorkoutRepository(DB_PATH)
+
+# Connects to DATABASE_URL (see .env / README) on first use, so importing this
+# module (e.g. in tests) doesn't need a running database.
+repo = None
+
+
+def get_repo() -> WorkoutRepository:
+    global repo
+    if repo is None:
+        repo = WorkoutRepository()
+    return repo
 
 
 @app.route("/")
@@ -34,6 +42,7 @@ def history():
 
 
 def render_history(error=None):
+    repo = get_repo()
     sets = repo.get_all_sets()
     # Build a small summary row for each exercise using the deterministic math.
     summary = []
@@ -59,7 +68,7 @@ def add_set():
         if not exercise:
             raise ValueError("Exercise name is required.")
         planned = form.get("planned_reps", "").strip()
-        repo.add_set(
+        get_repo().add_set(
             exercise=exercise,
             weight=float(form["weight"]),
             reps=int(form["reps"]),
@@ -81,7 +90,7 @@ def coach(exercise):
     if note is not None:
         try:
             from agents.pipeline import run_pipeline
-            result = run_pipeline(repo, exercise, note)
+            result = run_pipeline(get_repo(), exercise, note)
             diagnosis, plan = result["diagnosis"], result["plan"]
         except Exception as e:
             error = f"Something went wrong running the coach: {e}"

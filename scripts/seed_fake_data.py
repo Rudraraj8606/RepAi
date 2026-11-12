@@ -17,9 +17,6 @@ from datetime import date, timedelta
 
 from app_logic.workout_repository import WorkoutRepository
 
-DB_PATH = "data/repiq.db"
-
-
 def seed(repo: WorkoutRepository) -> None:
     today = date.today()
 
@@ -64,7 +61,7 @@ def print_metrics(repo: WorkoutRepository) -> None:
 
 
 if __name__ == "__main__":
-    repo = WorkoutRepository(DB_PATH)
+    repo = WorkoutRepository()
     seed(repo)
     print_metrics(repo)
     print("If you see numbers above, the app-logic layer works. You're ready to build.")
