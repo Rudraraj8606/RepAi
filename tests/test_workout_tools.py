@@ -4,15 +4,9 @@ from datetime import date, timedelta
 
 import pytest
 
-from app_logic.workout_repository import WorkoutRepository
 from agents.workout_tools import WorkoutTools
 
 TODAY = date.today()
-
-
-@pytest.fixture
-def repo(tmp_path):
-    return WorkoutRepository(str(tmp_path / "test.db"))
 
 
 def get_tool(repo, name):

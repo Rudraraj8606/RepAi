@@ -27,7 +27,7 @@ You log your sets (weight, reps, how many reps you *planned*, and a quick note l
 
 ```mermaid
 flowchart LR
-    S[Google Sheet] -->|import script| DB[(SQLite<br/>data/repiq.db)]
+    S[Google Sheet] -->|import script| DB[(PostgreSQL<br/>sets table)]
     F[Web form<br/>Log a set] --> DB
     DB --> R[WorkoutRepository<br/>deterministic math]
     R --> T[WorkoutTools<br/>5 LangChain tools]
@@ -41,7 +41,7 @@ The design keeps **math and AI separate**:
 
 | Layer | File | Job | Uses an LLM? |
 |---|---|---|---|
-| Data / app logic | `app_logic/workout_repository.py` | Owns the SQLite database and every calculation | ❌ No |
+| Data / app logic | `app_logic/workout_repository.py` | Owns the PostgreSQL connection (SQLAlchemy) and every calculation | ❌ No |
 | Tools | `agents/workout_tools.py` | Wraps the repository's calculations as tools Agent 1 can call | ❌ No |
 | **Agent 1 — Diagnostician** | `agents/diagnostician_agent.py` | A LangGraph ReAct agent. Decides *which* metrics it needs, calls the tools, combines them with your note, and writes a short diagnosis (e.g. fatigue, form breakdown, injury risk, normal progression). It does **not** prescribe. | ✅ Yes |
 | **Agent 2 — Prescriptive Coach** | `agents/coach_agent.py` | A single LLM call. Reads only Agent 1's diagnosis and returns a concrete plan: exercises, weights, sets, reps, or a deload/substitution. | ✅ Yes |
@@ -85,28 +85,30 @@ RepAi/
 │   ├── pipeline.py              # Agent 1 → Agent 2 glue
 │   └── workout_tools.py         # Repository calculations exposed as LangChain tools
 ├── app_logic/
-│   └── workout_repository.py    # SQLite + all deterministic math
+│   └── workout_repository.py    # PostgreSQL (SQLAlchemy) + all deterministic math
 ├── scripts/
 │   ├── seed_fake_data.py        # Inserts 10 demo sets and prints the metrics
-│   └── import_from_sheets.py    # Google Sheet → SQLite
+│   ├── import_from_sheets.py    # Google Sheet → PostgreSQL
+│   └── migrate_sqlite_to_postgres.py  # One-time copy of an old data/repiq.db
 ├── web/
 │   ├── app.py                   # Flask app
 │   └── templates/
 │       ├── history.html         # Log-a-set form, summary, all sets
 │       └── coach.html           # Note form + diagnosis + plan
 ├── tests/                       # pytest suite (see "Tests")
-├── data/                        # repiq.db lives here (created automatically, git-ignored)
 ├── credentials/                 # Google service-account key (git-ignored)
+├── docker-compose.yml           # Local PostgreSQL 17
+├── .env.example                 # Template for .env
 ├── pytest.ini
 ├── requirements.txt
-└── .env                         # ANTHROPIC_API_KEY (git-ignored, you create it)
+└── .env                         # ANTHROPIC_API_KEY + DATABASE_URL (git-ignored, you create it)
 ```
 
 ---
 
 ## Setup
 
-**Requirements:** Python 3.10+ and an [Anthropic API key](https://console.anthropic.com/).
+**Requirements:** Python 3.10+, an [Anthropic API key](https://console.anthropic.com/), and PostgreSQL — easiest via [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or `brew install postgresql@17`, or a free hosted database from [Neon](https://neon.tech)/[Supabase](https://supabase.com)).
 
 ```bash
 # 1. Clone and enter the project
@@ -120,13 +122,41 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Add your Anthropic API key
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env
+# 4. Create .env from the template and add your Anthropic API key
+cp .env.example .env             # then edit ANTHROPIC_API_KEY
+
+# 5. Start PostgreSQL (Docker Desktop must be running)
+docker compose up -d --wait
 ```
+
+The app reads its database from **`DATABASE_URL`** in `.env`. The default matches `docker-compose.yml`:
+
+```
+DATABASE_URL=postgresql+psycopg://repai:repai@localhost:5432/repai
+```
+
+For a hosted database, paste its connection string instead (`postgres://` / `postgresql://` URLs are converted automatically). The `sets` table is created on first run — no manual SQL needed.
+
+| Database command | What it does |
+|---|---|
+| `docker compose up -d --wait` | Start Postgres (data persists in the `repai_pgdata` Docker volume) |
+| `docker compose down` | Stop it (your data is kept) |
+| `docker compose down -v` | Stop it **and delete all data** |
+| `docker exec -it repai-postgres psql -U repai -d repai` | Open a SQL shell (`SELECT * FROM sets;`, `\q` to quit) |
 
 > 🔒 `.env`, `credentials/` and `*.db` are all in `.gitignore`. Never commit API keys.
 
-**Run every command from the `RepAi/` folder** — the code uses module imports (`python -m ...`) and the relative path `data/repiq.db`.
+**Run every command from the `RepAi/` folder** — the code uses module imports (`python -m ...`).
+
+### Upgrading from the SQLite version
+
+If you used RepAi before the switch and have a `data/repiq.db`, copy it into Postgres once:
+
+```bash
+python -m scripts.migrate_sqlite_to_postgres            # or pass a path to another .db file
+```
+
+It keeps every set's source and refuses to run twice (so no duplicates); `--force` appends anyway. After that, `data/repiq.db` is no longer used and can be deleted.
 
 ---
 
@@ -161,7 +191,7 @@ python -m agents.pipeline              # Full Agent 1 → Agent 2 chain
 
 ## Getting data in
 
-There are three ways to add workouts. All of them end up in `data/repiq.db`.
+There are three ways to add workouts. All of them end up in the PostgreSQL `sets` table.
 
 ### 1. Web form (easiest)
 
@@ -214,7 +244,7 @@ Safe to re-run: each import replaces the previous import's sets, so the database
 
 A 3-minute demo that shows the whole system:
 
-1. **Start fresh:** `rm -f data/repiq.db && python -m scripts.seed_fake_data`
+1. **Start fresh:** `docker compose down -v && docker compose up -d --wait && python -m scripts.seed_fake_data`
 2. **Launch:** `python -m web.app` and open the URL it prints
 3. **Show the metrics:** point out Bench Press in the Summary — estimated 1RM and **2 missed reps** in red.
 4. **Log a set live:** `Bench Press · 130 lbs · 6 reps · planned 10 · "shoulder pain again"` → it appears instantly and the summary updates.
@@ -227,7 +257,19 @@ A 3-minute demo that shows the whole system:
 
 ## Tests
 
-The test suite uses **pytest** and runs in about a second. **No test calls the Anthropic API or Google** — the AI pipeline and Sheets connection are replaced with fakes, and every test uses its own temporary database, so your real `data/repiq.db` is never touched.
+The test suite uses **pytest** and runs in about a second. **No test calls the Anthropic API or Google** — the AI pipeline and Sheets connection are replaced with fakes, and every test starts from an empty database, so your real data is never touched.
+
+**Which database the tests use:**
+
+- **Default:** a throwaway SQLite file per test — no Postgres needed, so `pytest` works anywhere.
+- **Real PostgreSQL:** set `TEST_DATABASE_URL` (already in `.env.example`). Tests then run against the separate `repai_test` database, which is created automatically and wiped before each test. Run this before you push a database change:
+
+```bash
+docker compose up -d --wait
+TEST_DATABASE_URL=postgresql+psycopg://repai:repai@localhost:5432/repai_test pytest
+```
+
+The suite refuses to start if `TEST_DATABASE_URL` equals `DATABASE_URL`.
 
 ```bash
 pytest              # run everything
@@ -240,14 +282,15 @@ pytest -k rep_deficit                 # tests whose name matches
 
 | File | Tests | What it covers |
 |---|---|---|
-| `tests/test_repository.py` | 26 | The core math. Weekly volume (including the exact 7-day cutoff and ignoring other exercises), Epley 1RM and its rounding, progression curve window and order, rep deficit (missed, beaten, no plan, no data), newest-first ordering, distinct exercise list, empty database, automatic creation of the `data/` folder, and source tracking: re-runs replace only their own rows, identical manual sets are kept, a failed replace rolls back, and older databases get the `source` column added. |
+| `tests/test_repository.py` | 37 | The core math. Weekly volume (including the exact 7-day cutoff and ignoring other exercises), Epley 1RM and its rounding, progression curve window and order, rep deficit (missed, beaten, no plan, no data), newest-first ordering, distinct exercise list, empty database, and source tracking: re-runs replace only their own rows, identical manual sets are kept, a failed replace rolls back, and older databases get the `source` column added. Database layer: the table isn't wiped on restart, dates come back as real `date` objects, fractional weights are kept, same-day sets order by insertion, names with quotes/SQL are stored safely (parameterized queries), `DATABASE_URL` is read from the environment, and `postgres://` URLs are normalised to the psycopg driver. |
 | `tests/test_workout_tools.py` | 11 | The exact text Agent 1 receives from each of the 5 tools, plus the "no data" message each tool returns instead of crashing. |
 | `tests/test_pipeline.py` | 1 | Agent 1's output is passed to Agent 2, and the pipeline returns `{"diagnosis", "plan"}`. Both agents are faked. |
 | `tests/test_web_app.py` | 13 | History page (empty and with data), the log-a-set form (saves, strips whitespace, redirects; planned reps optional; rejects bad weight, bad reps, bad date, blank exercise, missing fields), and the coach page (doesn't run the AI without a note, shows diagnosis + plan with one, shows a friendly error if the pipeline fails, includes the loading spinner), and free-port selection when a port is taken. |
 | `tests/test_import_from_sheets.py` | 7 | Converting Sheet rows to database rows the way `gspread` returns them (ints, strings, blanks), skipping blank rows, a missing `notes` column, and re-importing: no duplicates, edits and deletions mirrored, web-form sets kept, and a bad row aborts before anything is deleted. |
 | `tests/test_seed_fake_data.py` | 3 | The demo seed loads 10 sets, running it twice still leaves 10, and sets logged by hand survive a re-seed. |
+| `tests/test_migrate_sqlite_to_postgres.py` | 6 | Copying an old SQLite file: every set and its source kept, NULL notes become empty, old files without a `source` column count as manual, refuses to duplicate unless `--force`, and a file with no `sets` table is an error. |
 
-**Total: 61 tests.**
+**Total: 78 tests.**
 
 ### What the tests don't cover
 

@@ -4,7 +4,13 @@ from datetime import date, timedelta
 
 import pytest
 
-from app_logic.workout_repository import WorkoutRepository
+from sqlalchemy import create_engine, text
+
+from app_logic.workout_repository import (
+    DEFAULT_DATABASE_URL,
+    WorkoutRepository,
+    get_database_url,
+)
 
 TODAY = date.today()
 
@@ -13,18 +19,7 @@ def days_ago(n: int) -> date:
     return TODAY - timedelta(days=n)
 
 
-@pytest.fixture
-def repo(tmp_path):
-    return WorkoutRepository(str(tmp_path / "test.db"))
-
-
 # ---- Setup / reads ----
-
-def test_creates_missing_data_folder(tmp_path):
-    db_path = tmp_path / "nested" / "data" / "repiq.db"
-    WorkoutRepository(str(db_path))
-    assert db_path.exists()
-
 
 def test_recent_sets_are_newest_first_and_limited(repo):
     repo.add_set("Bench Press", 135, 10, days_ago(3), planned_reps=10, notes="old")
@@ -211,19 +206,99 @@ def test_replace_rolls_back_if_a_set_is_invalid(repo):
     assert len(repo.get_all_sets()) == 1  # the earlier import is still there
 
 
-def test_adds_source_column_to_old_database(tmp_path):
-    import sqlite3
+def test_adds_source_column_to_old_database(make_repo, database_url):
+    # Simulate a database created before the `source` column existed.
+    engine = create_engine(database_url)
+    with engine.begin() as conn:
+        conn.execute(text(
+            """CREATE TABLE sets (id INTEGER PRIMARY KEY, exercise VARCHAR(200) NOT NULL,
+               weight FLOAT NOT NULL, reps INTEGER NOT NULL, planned_reps INTEGER,
+               notes TEXT NOT NULL DEFAULT '', logged_on DATE NOT NULL)"""
+        ))
+        conn.execute(text(
+            "INSERT INTO sets (id, exercise, weight, reps, logged_on) VALUES (1, 'Squat', 225, 5, '2026-10-01')"
+        ))
+    engine.dispose()
 
-    db_path = tmp_path / "old.db"
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            """CREATE TABLE sets (id INTEGER PRIMARY KEY AUTOINCREMENT, exercise TEXT NOT NULL,
-               weight REAL NOT NULL, reps INTEGER NOT NULL, planned_reps INTEGER,
-               notes TEXT DEFAULT '', logged_on TEXT NOT NULL)"""
-        )
-        conn.execute("INSERT INTO sets (exercise, weight, reps, logged_on) VALUES ('Squat', 225, 5, '2026-10-01')")
-
-    repo = WorkoutRepository(str(db_path))
+    repo = make_repo()
     repo.replace_sets_from_source("seed", [])
 
     assert [s.exercise for s in repo.get_all_sets()] == ["Squat"]  # old row kept, treated as manual
+
+
+# ---- Database layer (PostgreSQL / SQLAlchemy) ----
+
+def test_creating_repository_twice_keeps_data(make_repo):
+    make_repo().add_set("Squat", 225, 5, days_ago(1))
+
+    assert len(make_repo().get_all_sets()) == 1  # CREATE TABLE IF NOT EXISTS, no wipe
+
+
+def test_logged_on_round_trips_as_a_date(repo):
+    repo.add_set("Squat", 225, 5, date(2026, 2, 28))
+
+    logged_on = repo.get_all_sets()[0].logged_on
+    assert type(logged_on) is date
+    assert logged_on == date(2026, 2, 28)
+
+
+def test_fractional_weights_are_preserved(repo):
+    repo.add_set("Curl", 27.5, 12, days_ago(1))
+
+    assert repo.get_all_sets()[0].weight == 27.5
+    assert repo.calculate_weekly_volume("Curl") == 330.0
+
+
+def test_weekly_volume_returns_a_float(repo):
+    repo.add_set("Squat", 200, 5, days_ago(1))
+
+    assert isinstance(repo.calculate_weekly_volume("Squat"), float)
+
+
+def test_same_day_sets_ordered_by_insertion(repo):
+    repo.add_set("Bench Press", 135, 10, days_ago(1), planned_reps=10)
+    repo.add_set("Bench Press", 135, 7, days_ago(1), planned_reps=10)
+
+    # The last set logged that day counts as "most recent".
+    assert repo.get_rep_deficit("Bench Press") == 3
+
+
+def test_exercise_names_with_quotes_are_stored_safely(repo):
+    name = "Farmer's Walk'); DROP TABLE sets; --"
+    repo.add_set(name, 100, 1, days_ago(1))
+
+    assert repo.get_all_exercises() == [name]
+    assert len(repo.get_recent_sets(name)) == 1
+
+
+def test_uses_database_url_from_environment(monkeypatch, database_url):
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
+    repo = WorkoutRepository()
+    try:
+        assert repo.database_url == database_url
+    finally:
+        repo.dispose()
+
+
+@pytest.mark.parametrize(
+    "given, expected",
+    [
+        ("postgres://u:p@host:5432/db", "postgresql+psycopg://u:p@host:5432/db"),
+        ("postgresql://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
+        ("postgresql+psycopg://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
+        ("sqlite:///x.db", "sqlite:///x.db"),
+    ],
+)
+def test_database_url_is_normalised_to_psycopg(monkeypatch, given, expected):
+    monkeypatch.setenv("DATABASE_URL", given)
+
+    assert get_database_url() == expected
+
+
+def test_default_database_url_points_at_local_postgres(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr("app_logic.workout_repository.load_dotenv", lambda: None)
+
+    assert get_database_url() == DEFAULT_DATABASE_URL
+    assert DEFAULT_DATABASE_URL.startswith("postgresql+psycopg://")

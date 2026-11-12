@@ -1,0 +1,24 @@
+# Local PostgreSQL for RepIQ.
+#   docker compose up -d      # start (data persists in the repai_pgdata volume)
+#   docker compose down       # stop  (add -v to also delete all data)
+services:
+  db:
+    image: postgres:17
+    container_name: repai-postgres
+    environment:
+      POSTGRES_USER: repai
+      POSTGRES_PASSWORD: repai
+      POSTGRES_DB: repai
+    ports:
+      - "5432:5432"
+    volumes:
+      - repai_pgdata:/var/lib/postgresql/data
+    # The repai_test database (for pytest) is created automatically by tests/conftest.py.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U repai -d repai"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  repai_pgdata:

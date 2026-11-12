@@ -2,13 +2,7 @@
 
 import pytest
 
-from app_logic.workout_repository import WorkoutRepository
 from scripts.seed_fake_data import seed
-
-
-@pytest.fixture
-def repo(tmp_path):
-    return WorkoutRepository(str(tmp_path / "test.db"))
 
 
 def test_seed_loads_demo_sets(repo):
