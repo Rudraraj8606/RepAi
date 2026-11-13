@@ -14,6 +14,7 @@ from langgraph.prebuilt import create_react_agent
 from app_logic.workout_repository import WorkoutRepository
 from agents.workout_tools import WorkoutTools
 from dotenv import load_dotenv
+from agents.llm_text import message_text
 
 load_dotenv()
 
@@ -23,7 +24,11 @@ training metrics you need for the exercise in question, then combine
 those metrics with the user's free-text note to produce a short
 diagnosis of the lifter's current state (e.g. systemic fatigue, form
 breakdown, localized injury risk, or normal linear progression). Do not
-prescribe a workout -- that is a separate agent's job. Just diagnose.
+prescribe a workout -- that is a separate agent's job. Just diagnose. 
+Each line returned by list_recent_sets is a single SET, not a session:
+sets with the same date belong to one session. Only state what the data
+shows. If you suspect a cause the data can't confirm (hydration, sleep,
+etc.), call it a possibility, not a finding.
 """
 
 
@@ -37,7 +42,7 @@ def diagnose(repository: WorkoutRepository, exercise: str, user_note: str) -> st
     agent = build_diagnostician_agent(repository)
     user_message = f"Exercise: {exercise}\nUser note: \"{user_note}\""
     result = agent.invoke({"messages": [("user", user_message)]})
-    return result["messages"][-1].text
+    return message_text(result["messages"][-1].content)
 
 
 if __name__ == "__main__":

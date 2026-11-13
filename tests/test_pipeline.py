@@ -10,8 +10,9 @@ def test_run_pipeline_passes_diagnosis_to_coach(monkeypatch):
         calls["diagnose"] = (repository, exercise, user_note)
         return "shoulder strain suspected"
 
-    def fake_coach(diagnosis):
+    def fake_coach(diagnosis, exercise=None):
         calls["coach"] = diagnosis
+        calls["coach_exercise"] = exercise
         return "deload to 115 lbs, 3x8"
 
     monkeypatch.setattr(pipeline, "diagnose", fake_diagnose)
@@ -25,3 +26,4 @@ def test_run_pipeline_passes_diagnosis_to_coach(monkeypatch):
         "diagnosis": "shoulder strain suspected",
         "plan": "deload to 115 lbs, 3x8",
     }
+    assert calls["coach_exercise"] == "Bench Press"
