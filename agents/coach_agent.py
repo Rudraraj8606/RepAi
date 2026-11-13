@@ -10,6 +10,7 @@ is enough; no ReAct loop needed.
 
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
+from agents.llm_text import message_text
 
 load_dotenv()
 
@@ -20,7 +21,8 @@ agent. Turn that diagnosis into a specific, actionable plan for their
 next training session: name exact exercises, target weights, sets, and
 reps (or an explicit deload/substitution if the diagnosis calls for
 one). Do not restate or re-explain the diagnosis -- just prescribe the
-plan.
+plan. If an exercise is named, build the plan around it, and only 
+switch to a different movement when the diagnosis calls for a substitution.
 """
 
 
@@ -28,14 +30,17 @@ def build_coach_agent() -> ChatAnthropic:
     return ChatAnthropic(model="claude-sonnet-5")
 
 
-def coach(diagnosis: str) -> str:
+def coach(diagnosis: str, exercise: str | None = None) -> str:
     llm = build_coach_agent()
+    user_message = f"Diagnosis: {diagnosis}"
+    if exercise:
+        user_message = f"Exercise: {exercise}\n{user_message}"
     messages = [
         ("system", COACH_SYSTEM_PROMPT),
-        ("user", f"Diagnosis: {diagnosis}"),
+        ("user", user_message),
     ]
     result = llm.invoke(messages)
-    return result.text
+    return message_text(result.content)
 
 
 if __name__ == "__main__":

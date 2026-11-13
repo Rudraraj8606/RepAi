@@ -12,12 +12,12 @@ from agents.coach_agent import coach
 
 def run_pipeline(repository: WorkoutRepository, exercise: str, user_note: str) -> dict:
     diagnosis = diagnose(repository, exercise, user_note)
-    plan = coach(diagnosis)
+    plan = coach(diagnosis, exercise)
     return {"diagnosis": diagnosis, "plan": plan}
 
 
 if __name__ == "__main__":
     repo = WorkoutRepository()
-    result = run_pipeline(repo, "Bench Press", "shoulder felt off today")
-    print("Diagnosis:", result["diagnosis"])
-    print("Plan:", result["plan"])
+    result = run_pipeline(repo, "Hack Squat", "legs felt tired and I was cramping, had to drop the weight")
+    print("DIAGNOSIS:", result["diagnosis"])
+    print("PLAN:", result["plan"])

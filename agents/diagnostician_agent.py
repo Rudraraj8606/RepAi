@@ -14,6 +14,7 @@ from langgraph.prebuilt import create_react_agent
 from app_logic.workout_repository import WorkoutRepository
 from agents.workout_tools import WorkoutTools
 from dotenv import load_dotenv
+from agents.llm_text import message_text
 
 load_dotenv()
 
@@ -41,7 +42,7 @@ def diagnose(repository: WorkoutRepository, exercise: str, user_note: str) -> st
     agent = build_diagnostician_agent(repository)
     user_message = f"Exercise: {exercise}\nUser note: \"{user_note}\""
     result = agent.invoke({"messages": [("user", user_message)]})
-    return result["messages"][-1].text
+    return message_text(result["messages"][-1].content)
 
 
 if __name__ == "__main__":
