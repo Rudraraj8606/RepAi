@@ -256,16 +256,25 @@ Safe to re-run: each import replaces the previous import's sets, so the database
 
 ## Demo walkthrough
 
-A 3-minute demo that shows the whole system:
+A 5-minute demo on real workout data, from the Google Sheet to a coaching plan.
 
-1. **Start fresh:** `docker compose down -v && docker compose up -d --wait && python -m scripts.seed_fake_data`
-2. **Launch:** `python -m web.app` and open the URL it prints
-3. **Show the metrics:** point out Bench Press in the Summary — estimated 1RM and **2 missed reps** in red.
-4. **Log a set live:** `Bench Press · 130 lbs · 6 reps · planned 10 · "shoulder pain again"` → it appears instantly and the summary updates.
-5. **Get coaching:** click **Get coaching →** on Bench Press, enter *"shoulder felt off again, pressing felt weak"*, submit.
-6. **Explain the output:**
-   - **Agent 1** called the tools itself (you'll see `[Tool] ...` lines in the terminal), noticed the drop in weight and reps alongside the shoulder note, and diagnosed it.
-   - **Agent 2** turned that diagnosis into a specific plan — never seeing the raw data, only the diagnosis.
+**Before you start:** Docker Desktop is open, and `.env` has your API key, `GOOGLE_CREDENTIALS_FILE` and `SPREADSHEET_ID`.
+
+1. **Show the source:** open the Google Sheet. Point out planned vs. actual sets/reps and a note, such as the 11/6 Hack Squats note about right-quad cramping.
+2. **Start the database:** `docker compose up -d --wait`
+3. **Import live from Google Sheets:** `python -m scripts.import_from_sheets`. It lists the rows it skips (steps, planks, bodyweight) and prints `Imported N sets`.
+4. **Launch:** `python -m web.app` and open the URL it prints.
+5. **Show the metrics:** in the Summary, point out Hack Squats: estimated 1RM and weekly volume.
+6. **Log a set live:** `Hack Squats · 150 lbs · 6 reps · planned 8 · "right quad cramping again"`. It appears instantly, and the summary shows **2 missed reps** in red.
+7. **Get coaching:** click **Get coaching →** on Hack Squats (use the button so the exercise name matches exactly), enter *"cramping again, had to cut the set short"* and submit. Both agents run, so expect a short wait.
+8. **Explain the output:**
+   - **Agent 1** called the tools itself (the `[Tool] ...` lines in the terminal) and combined the numbers with the notes from your Sheet, not only the note you typed.
+   - **Agent 2** turned that diagnosis into a plan for Hack Squats, never seeing the raw data.
+9. **If asked about the Sheet link:** edit a weight in the Sheet, re-run the import, and refresh to show the database mirrors the Sheet.
+
+### Fallback: demo with fake data
+
+If Google isn't reachable, use the built-in demo story:
 
 ---
 
@@ -297,8 +306,8 @@ pytest -k rep_deficit                 # tests whose name matches
 | File | Tests | What it covers |
 |---|---|---|
 | `tests/test_repository.py` | 37 | The core math. Weekly volume (including the exact 7-day cutoff and ignoring other exercises), Epley 1RM and its rounding, progression curve window and order, rep deficit (missed, beaten, no plan, no data), newest-first ordering, distinct exercise list, empty database, and source tracking: re-runs replace only their own rows, identical manual sets are kept, a failed replace rolls back, and older databases get the `source` column added. Database layer: the table isn't wiped on restart, dates come back as real `date` objects, fractional weights are kept, same-day sets order by insertion, names with quotes/SQL are stored safely (parameterized queries), `DATABASE_URL` is read from the environment, and `postgres://` URLs are normalised to the psycopg driver. |
-| `tests/test_workout_tools.py` | 11 | Agent 1’s output and the exercise are passed to Agent 2, and the pipeline returns {"diagnosis", "plan"}. Both agents are faked. |
-| `tests/test_pipeline.py` | 1 | Agent 1's output is passed to Agent 2, and the pipeline returns `{"diagnosis", "plan"}`. Both agents are faked. |
+| `tests/test_workout_tools.py` | 11 | The exact text Agent 1 receives from each of the 5 tools, plus the "no data" message each tool returns instead of crashing. |
+| `tests/test_pipeline.py` | 1 | Agent 1's output and the exercise are passed to Agent 2, and the pipeline returns `{"diagnosis", "plan"}`. Both agents are faked. |
 | `tests/test_web_app.py` | 13 | History page (empty and with data), the log-a-set form (saves, strips whitespace, redirects; planned reps optional; rejects bad weight, bad reps, bad date, blank exercise, missing fields), and the coach page (doesn't run the AI without a note, shows diagnosis + plan with one, shows a friendly error if the pipeline fails, includes the loading spinner), and free-port selection when a port is taken. |
 | `tests/test_import_from_sheets.py` | 19 | Converting the real Sheet layout into database rows: sets × reps expanded to one row per set (including uneven sets like 2x8, 2x7), planned ranges, US-style dates, weights like 55lbs, bodyweight (`BW`), steps and planks skipped and listed, notes kept on every set, wrong headers failing loudly, and re-importing: no duplicates, edits and deletions mirrored, web-form sets kept, and a bad date aborting before anything is deleted. |
 | `tests/test_seed_fake_data.py` | 3 | The demo seed loads 10 sets, running it twice still leaves 10, and sets logged by hand survive a re-seed. |
