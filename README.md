@@ -83,6 +83,7 @@ RepAi/
 │   ├── diagnostician_agent.py   # Agent 1 (ReAct agent + tools)
 │   ├── coach_agent.py           # Agent 2 (single LLM call)
 │   ├── pipeline.py              # Agent 1 → Agent 2 glue
+│   ├── llm_text.py              # Turns a model reply into plain text (thinking blocks dropped)
 │   └── workout_tools.py         # Repository calculations exposed as LangChain tools
 ├── app_logic/
 │   └── workout_repository.py    # PostgreSQL (SQLAlchemy) + all deterministic math
@@ -101,7 +102,7 @@ RepAi/
 ├── .env.example                 # Template for .env
 ├── pytest.ini
 ├── requirements.txt
-└── .env                         # ANTHROPIC_API_KEY + DATABASE_URL (git-ignored, you create it)
+└── .env                         # ANTHROPIC_API_KEY, DATABASE_URL, GOOGLE_CREDENTIALS_FILE, SPREADSHEET_ID (git-ignored, you create it)
 ```
 
 ---
@@ -211,22 +212,33 @@ Inserts 10 sets across Bench Press, Squat, Deadlift and Overhead Press, then pri
 
 **One-time setup**
 
-1. In [Google Cloud Console](https://console.cloud.google.com/), create (or pick) a project and enable the **Google Sheets API** and **Google Drive API**.
+1. In [Google Cloud Console](https://console.cloud.google.com/), create (or pick) a project and enable the **Google Sheets API**.
 2. Go to **IAM & Admin → Service Accounts**, create a service account, then **Keys → Add key → JSON** to download its key file.
-3. Save the key as `credentials.json` in the `RepAi/` folder (this is where `scripts/import_from_sheets.py` currently looks — see [Known issues](#known-issues--next-steps)).
+3. Save the key file in the `credentials/` folder (it's git-ignored).
 4. Open your Google Sheet → **Share** → add the service account's `client_email` (from the JSON file, ends in `iam.gserviceaccount.com`) as a **Viewer**.
-5. Set `SHEET_NAME` in `scripts/import_from_sheets.py` to your sheet's exact name (default: `"RepIQ Workout Log"`).
+5. Add two lines to your `.env`:
+
+   ```
+   GOOGLE_CREDENTIALS_FILE=credentials/<your-key-file>.json
+   SPREADSHEET_ID=<the long string in the Sheet's URL between /d/ and /edit>
+   ```
 
 **Sheet format** — first tab, these exact headers in row 1:
 
-| date | exercise | weight | reps | planned_reps | notes |
+| Date | Workout | Planned Sets/Reps | Sets/Reps | Weight | Notes |
 |---|---|---|---|---|---|
-| 2026-09-20 | Bench Press | 145 | 9 | 10 | good session |
-| 2026-09-22 | Squat | 185 | 5 | | |
+| 2/7/2026 | Incline DB Press | 4x8-10 | 4x10 | 55lbs | |
+| 2/8/2026 | Hack Squats | 3x8-10 | 3x8 | 175lbs | Starting resistance is 105lbs, so 175lbs |
 
-- `date` must be `YYYY-MM-DD`
-- `planned_reps` and `notes` can be blank
-- Rows missing a `date` or `exercise` are skipped
+Each row becomes one database row **per set**:
+
+- **Sets/Reps** `4x10` becomes 4 sets of 10 reps; `2x8, 2x7` works too
+- **Planned Sets/Reps** `4x8-10` sets planned reps to 8, the bottom of the range, so a rep deficit only shows up when you fall below it (set `USE_TOP_OF_RANGE = True` in `scripts/import_from_sheets.py` to use the top, 10)
+- **Weight** `55lbs` becomes 55.0
+- **Date** can be `2/7/2026` or `2026-02-07`
+- **Notes** is optional (a missing column prints a warning); a row's note is kept on every set of that exercise
+- Rows that aren't weight × reps (bodyweight `BW`, planks, steps) are skipped and listed when the import finishes
+- Rows missing a date or workout are skipped
 
 **Import**
 
@@ -234,7 +246,9 @@ Inserts 10 sets across Bench Press, Squat, Deadlift and Overhead Press, then pri
 python -m scripts.import_from_sheets
 ```
 
-Safe to re-run: each import replaces the previous import's sets, so the database mirrors the Sheet, including edited and deleted rows. If any row is invalid (e.g. a non-numeric weight), nothing is changed. Web-form and demo sets are kept.
+Safe to re-run: each import replaces the previous import's sets, so the database mirrors the Sheet, including edited and deleted rows. If a row's date can't be read or a required column header is missing, nothing is changed. Web-form and demo sets are kept.
+
+> The weekly-volume tool looks at the last 7 days and the trend tool at the last 8 weeks, both counted back from today, so log some recent sessions before a demo.
 
 > Every set records its **source** (`manual`, `seed` or `sheets`). That's how re-runs replace only their own rows. Identical sets logged by hand, such as 3 × 135 lbs × 10 on one day, are never merged.
 
@@ -283,14 +297,15 @@ pytest -k rep_deficit                 # tests whose name matches
 | File | Tests | What it covers |
 |---|---|---|
 | `tests/test_repository.py` | 37 | The core math. Weekly volume (including the exact 7-day cutoff and ignoring other exercises), Epley 1RM and its rounding, progression curve window and order, rep deficit (missed, beaten, no plan, no data), newest-first ordering, distinct exercise list, empty database, and source tracking: re-runs replace only their own rows, identical manual sets are kept, a failed replace rolls back, and older databases get the `source` column added. Database layer: the table isn't wiped on restart, dates come back as real `date` objects, fractional weights are kept, same-day sets order by insertion, names with quotes/SQL are stored safely (parameterized queries), `DATABASE_URL` is read from the environment, and `postgres://` URLs are normalised to the psycopg driver. |
-| `tests/test_workout_tools.py` | 11 | The exact text Agent 1 receives from each of the 5 tools, plus the "no data" message each tool returns instead of crashing. |
+| `tests/test_workout_tools.py` | 11 | Agent 1’s output and the exercise are passed to Agent 2, and the pipeline returns {"diagnosis", "plan"}. Both agents are faked. |
 | `tests/test_pipeline.py` | 1 | Agent 1's output is passed to Agent 2, and the pipeline returns `{"diagnosis", "plan"}`. Both agents are faked. |
 | `tests/test_web_app.py` | 13 | History page (empty and with data), the log-a-set form (saves, strips whitespace, redirects; planned reps optional; rejects bad weight, bad reps, bad date, blank exercise, missing fields), and the coach page (doesn't run the AI without a note, shows diagnosis + plan with one, shows a friendly error if the pipeline fails, includes the loading spinner), and free-port selection when a port is taken. |
-| `tests/test_import_from_sheets.py` | 7 | Converting Sheet rows to database rows the way `gspread` returns them (ints, strings, blanks), skipping blank rows, a missing `notes` column, and re-importing: no duplicates, edits and deletions mirrored, web-form sets kept, and a bad row aborts before anything is deleted. |
+| `tests/test_import_from_sheets.py` | 19 | Converting the real Sheet layout into database rows: sets × reps expanded to one row per set (including uneven sets like 2x8, 2x7), planned ranges, US-style dates, weights like 55lbs, bodyweight (`BW`), steps and planks skipped and listed, notes kept on every set, wrong headers failing loudly, and re-importing: no duplicates, edits and deletions mirrored, web-form sets kept, and a bad date aborting before anything is deleted. |
 | `tests/test_seed_fake_data.py` | 3 | The demo seed loads 10 sets, running it twice still leaves 10, and sets logged by hand survive a re-seed. |
 | `tests/test_migrate_sqlite_to_postgres.py` | 6 | Copying an old SQLite file: every set and its source kept, NULL notes become empty, old files without a `source` column count as manual, refuses to duplicate unless `--force`, and a file with no `sets` table is an error. |
+| `tests/test_llm_text.py` | 4 | A model reply always comes out as plain text: a plain string is returned unchanged, thinking blocks are dropped, and several text blocks are joined in order. |
 
-**Total: 78 tests.**
+**Total: 94 tests.**
 
 ### What the tests don't cover
 
@@ -347,7 +362,7 @@ Keep commits small and focused: one logical change per commit, with a message th
 
 ## Known issues & next steps
 
-- **Sheets key location:** `import_from_sheets.py` reads `credentials.json` from the project root, but `.gitignore` only ignores the `credentials/` folder, so a root key file could be committed by accident. Planned fix: read from `credentials/credentials.json`.
+- **Bodyweight lifts aren't imported from the Sheet:** rows with `BW` as the weight (Dips, Back Extension, ...) have no numeric weight to store, so the import skips and lists them, and their notes are not imported. Possible fix: a `BODYWEIGHT_LBS` setting, or a nullable weight column.
 - **LangGraph deprecation:** `create_react_agent` is deprecated and should be migrated to `langchain.agents.create_agent` before LangGraph v2.0.
 - **Not yet done:** user accounts, editing/deleting logged sets, and charts of the progression trend.
 
